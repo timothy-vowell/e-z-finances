@@ -190,17 +190,20 @@ def extract_transactions_from_pdf(pdf_path):
             lines = text.splitlines()
             for line in lines:
                 # Match: MM/DD MM/DD description $amount
-                match = re.match(r"\d{2}/\d{2}\s+\d{2}/\d{2}\s+(.*)\s+\$(\d+\.\d{2})", line)
+                match = re.match(r"(\d{2}/\d{2})\s+\d{2}/\d{2}\s+(.*)\s+\$(\d+\.\d{2})", line)
                 if match:
-                    raw_desc = match.group(1).strip()
-                    amount = float(match.group(2))
+                    date = match.group(1)
+                    raw_desc = match.group(2).strip()
+                    amount = float(match.group(3))
                     category = categorize(raw_desc)
                     transactions.append({
+                        "Date": date,
                         "Description": raw_desc,
                         "Amount": amount,
                         "Category": category,
                         "Source File": pdf_path.name
                     })
+
     return transactions
 
 # === Main parsing loop ===
