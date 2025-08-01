@@ -74,7 +74,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
+
 
 
 import pdfplumber
@@ -87,7 +87,7 @@ import shutil
 PDF_DIR = Path("pdfs")
 PROCESSED_DIR = Path("processed")
 RULES_PATH = Path("categorization_rules.json")
-OUTPUT_FILE = Path("parsed_transactions.xlsx")
+OUTPUT_FILE = Path("parsed/parsed_transactions.xlsx")
 
 PROCESSED_DIR.mkdir(exist_ok=True)
 
@@ -133,6 +133,84 @@ for pdf_file in PDF_DIR.glob("*.pdf"):
     shutil.move(str(pdf_file), PROCESSED_DIR / pdf_file.name)
 
 # Save to a single Excel file
+if all_transactions:
+    df = pd.DataFrame(all_transactions)
+    df.to_excel(OUTPUT_FILE, index=False)
+    print(f"✅ Saved {len(df)} transactions to {OUTPUT_FILE}")
+else:
+    print("⚠️ No transactions found.")
+'''
+
+
+
+import pdfplumber
+import pandas as pd
+import re
+import json
+from pathlib import Path
+import shutil
+
+# === Paths ===
+PDF_DIR = Path("pdfs")
+PROCESSED_DIR = Path("processed")
+OUTPUT_DIR = Path("parsed-transactions")
+RULES_PATH = Path("categories.json")
+OUTPUT_FILE = OUTPUT_DIR / "parsed_transactions.xlsx"
+
+# Ensure required folders exist
+PROCESSED_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# === Load categorization rules ===
+with open(RULES_PATH) as f:
+    rules = json.load(f)
+
+# === Normalize description ===
+def normalize(text):
+    text = text.lower()
+    return re.sub(r"[^a-z0-9 ]", "", text)
+
+# === Categorization logic ===
+def categorize(description):
+    norm_desc = normalize(description)
+    for category, keywords in rules.items():
+        for keyword in keywords:
+            if keyword in norm_desc:
+                return category
+    return "Uncategorized"
+
+# === Extract transactions from one PDF ===
+def extract_transactions_from_pdf(pdf_path):
+    transactions = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if not text:
+                continue
+            lines = text.splitlines()
+            for line in lines:
+                # Match: MM/DD MM/DD description $amount
+                match = re.match(r"\d{2}/\d{2}\s+\d{2}/\d{2}\s+(.*)\s+\$(\d+\.\d{2})", line)
+                if match:
+                    raw_desc = match.group(1).strip()
+                    amount = float(match.group(2))
+                    category = categorize(raw_desc)
+                    transactions.append({
+                        "Description": raw_desc,
+                        "Amount": amount,
+                        "Category": category,
+                        "Source File": pdf_path.name
+                    })
+    return transactions
+
+# === Main parsing loop ===
+all_transactions = []
+for pdf_file in PDF_DIR.glob("*.pdf"):
+    txns = extract_transactions_from_pdf(pdf_file)
+    all_transactions.extend(txns)
+    shutil.move(str(pdf_file), PROCESSED_DIR / pdf_file.name)
+
+# === Save results ===
 if all_transactions:
     df = pd.DataFrame(all_transactions)
     df.to_excel(OUTPUT_FILE, index=False)
