@@ -1,3 +1,4 @@
+'''
 import pdfplumber
 import pandas as pd
 import re
@@ -73,3 +74,68 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
+
+
+import pdfplumber
+import pandas as pd
+import re
+import json
+from pathlib import Path
+import shutil
+
+PDF_DIR = Path("pdfs")
+PROCESSED_DIR = Path("processed")
+RULES_PATH = Path("categorization_rules.json")
+OUTPUT_FILE = Path("parsed_transactions.xlsx")
+
+PROCESSED_DIR.mkdir(exist_ok=True)
+
+# Load categorization rules from JSON
+with open(RULES_PATH) as f:
+    rules = json.load(f)
+
+def categorize(description):
+    desc = description.lower()
+    for keyword, category in rules.items():
+        if keyword.lower() in desc:
+            return category
+    return "Uncategorized"
+
+def extract_transactions_from_pdf(pdf_path):
+    transactions = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if not text:
+                continue
+            lines = text.splitlines()
+            for line in lines:
+                # Match typical transaction line: MM/DD optional MM/DD + description + $amount
+                match = re.match(r"\d{2}/\d{2}\s+\d{2}/\d{2}\s+(.*)\s+\$(\d+\.\d{2})", line)
+                if match:
+                    raw_desc = match.group(1).strip()
+                    amount = float(match.group(2))
+                    category = categorize(raw_desc)
+                    transactions.append({
+                        "Description": raw_desc,
+                        "Amount": amount,
+                        "Category": category,
+                        "Source File": pdf_path.name
+                    })
+    return transactions
+
+# Aggregate all parsed transactions
+all_transactions = []
+for pdf_file in PDF_DIR.glob("*.pdf"):
+    txns = extract_transactions_from_pdf(pdf_file)
+    all_transactions.extend(txns)
+    shutil.move(str(pdf_file), PROCESSED_DIR / pdf_file.name)
+
+# Save to a single Excel file
+if all_transactions:
+    df = pd.DataFrame(all_transactions)
+    df.to_excel(OUTPUT_FILE, index=False)
+    print(f"✅ Saved {len(df)} transactions to {OUTPUT_FILE}")
+else:
+    print("⚠️ No transactions found.")
